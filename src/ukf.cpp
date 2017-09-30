@@ -1,6 +1,11 @@
 #include "ukf.h"
 #include "Eigen/Dense"
 #include <iostream>
+#define WINDOW 0.2
+#define LIDAR_Z_SIZE 2
+#define RADAR_Z_SIZE 3
+#define PROCESS_NOISE_SIZE 2
+#define LAMBDA_CONST 3
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -29,7 +34,7 @@ UKF::UKF() {
   P_ = MatrixXd::Zero(n_x_,n_x_);
 
   // initial lidar measurement matrix
-  H_ = MatrixXd::Zero(2,n_x);
+  H_ = MatrixXd::Zero(LIDAR_Z_SIZE,n_x);
   H_(0,0) = 1;
   H_(1,1) = 1;
   Ht_ = H_.transpose();
@@ -57,14 +62,14 @@ UKF::UKF() {
 
   // Radar measurement noise standard deviation radius change in m/s
   std_radrd_ = 0.3;
-
+LIDAR_Z_SIZE
   // initial lidar measurement noise matrix
-  Rl_= MatrixXd::Zero(2,2);
+  Rl_= MatrixXd::Zero(LIDAR_Z_SIZE,LIDAR_Z_SIZE);
   Rl_(0,0) = std_laspx_*std_laspx_;
   Rl_(1,1) = std_laspy_*std_laspy_;
 
   // initial radar measurement noise matrix
-  Rr_= MatrixXd::Zero(3,3);
+  Rr_= MatrixXd::Zero(RADAR_Z_SIZE,RADAR_Z_SIZE);
   Rr_(0,0) = std_radr_*std_radr_;
   Rr_(1,1) = std_radphi_*std_radphi_;
   Rr_(2,2) = std_radrd_*std_radrd_;
@@ -73,7 +78,7 @@ UKF::UKF() {
   is_initialized_= false;
 
   // initialize sigma point spreading parameter
-  lambda_ = 3 - n_aug_;
+  lambda_ = LAMBDA_CONST - n_aug_;
   s_lam_n_x_ = sqrt(lambda_ + n_aug_);
 
   // set weights
@@ -81,7 +86,7 @@ UKF::UKF() {
   weights_(0) = lambda_/(lambda_+n_sig_);
 
   // set process covariance matrix
-  Q_ = MatrixXd::Zero(2,2);
+  Q_ = MatrixXd::Zero(PROCESS_NOISE_SIZE,PROCESS_NOISE_SIZE);
   Q_(0,0) = std_a_*std_a_;
   Q_(1,1) = std_yawdd_*std_yawdd_;
 }
@@ -168,7 +173,7 @@ void UKF::Prediction(double dt) {
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
-  VectorXd x_aug_ = VectorXd::Zero(n_aug_);
+  VectorXd x_aug_ = VectorXd::Zero(nLIDAR_Z_SIZE_aug_);
   MatrixXd P_aug_ = MatrixXd::Zero(n_aug_,n_aug_);
 
   // set augmented state vector
@@ -218,15 +223,13 @@ void UKF::Prediction(double dt) {
 
   ///* derive mean
   x_.setZero();
-
-  vectorXd err(n_x);
-  for (int i = 0; i < n_sig_; ++i){
+  for (int i = 0; i < n_sig_; ++i)
     x_ += weights_(i)*Xsig_pred_.col(i);
-  }
 
-  ///* derive covariance
+
+  ///* derive cxovariance
   P_.setZero();
-  vectorXd err(n_x);
+  vectorXd err(n_x_);
   for (int i = 0; i < n_sig_; ++i){
     err = Xsig_pred_.col(i) - x_;
     P_ += weights_* err * err.transpose();
@@ -251,14 +254,14 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   MatrixXd K_ = P_*Ht_*S_.inverse();
 
   x_ += K_*y_;
-  P_ = (MatrixXd::Identity(2,2) - K_*H_)*P_;
+  P_ = (MatrixXd::Identity(n_x_,n_x_) - K_*H_)*P_;
 
 }
 
 /**
  * Updates the state and the state covariance matrix using a radar measurement.
  * @param {MeasurementPackage} meas_package
- */
+ */x
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
   /**
   TODO:
@@ -267,5 +270,69 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   position. Modify the state vector, x_, and covariance, P_.
 
   You'll also need to calculate the radar NIS.
-  */
+  */x
+  MatrixXd Zsig_(RADAR_Z_SIZE,n_sig_);
+  VectorXd z_ = meas_package.raw_measurements_;
+  VectorXd z_pred_ = Zero(RADAR_Z_SIZE);
+
+  //recover state parameters
+  double px = x_(0);
+  double py = x_(1);
+  double vx = x_(2)*cos(x_(3));
+  double vy = x_(3)*sin(x_(3));
+  double sq_x2y2 = sqrt(px*px + py*py);
+
+  ///* calculate Z sigma matrix
+  for (int i = 0; i < n_sig_) {
+    Zsig_(0,i) = sq_x2y2;
+    if (px != 0)
+      Zsig_(1,i) = atan2(py,px);
+    else if (py > 0)
+      Zsig_(1,i) = M_PI/2.0;
+    else if (py < 0)
+      Zsig_(1,i) = -M_PI/2.0;
+    else
+      Zsig_(1,i) = 0;
+
+    if (fabs(px) < 0.001 && fabs(py) < 0.001)
+      Zsig_(2,i) = 0;
+    else
+      Zsig_(2,i) = (px*vx + py*vy)/sq_x2y2;
+  }
+
+  ///* derive mean
+  for (int i = 0; i < n_sig_; ++i)
+    z_pred_ += weights_(i)*Zsig_.col(i);
+
+
+  ///* derive covariance
+  MatrixXd S_ = MatrixXd::Zero(RADAR_Z_SIZE,RADAR_Z_SIZE);
+  vectorXd err(RADAR_Z_SIZE);
+  for (int i = 0; i < n_sig_; ++i){
+    err = Zsig_.col(i) - z_pred_;
+    S_ += weights_* err * err.transpose();
+  }
+  S += R;
+
+  // fix +-pi errors between measurement (z_) and prediction (z_pred_)
+  if (z_(1) > M_PI - window && z_pred_(1) < 0 )
+    z_pred_1) += 2*M_PI;
+  else if (z_(1) < -M_PI + window && z_pred_(1) > 0 )
+    z_pred_(1) -= 2*M_PI;
+
+
+  ///* Update Measurement
+  MatrixXd T_ = MatrixXd::Zero(n_x_,RADAR_Z_SIZE)
+  VectorXd diff_x(n_x_);
+  VectorXd diff_z(RADAR_Z_SIZE);
+  for (int i = 0; i < n_sig_; ++i) {
+    diff_x = Xsig_pred_.col(i) - x_;
+    diff_z = Zsig_.col(i) - z_pred_;
+    T += weights_(i) * diff_x * diff_z.transpose();
+  }
+
+  MatrixXd K_ = T_*S_.inverse();
+
+  x_ += K_*(z_ - z_pred_);
+  P_ -= K_*S_*K_.transpose();
 }
