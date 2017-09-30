@@ -84,7 +84,7 @@ public:
   double lambda_;
 
   ///* sqrt(lambda + n_x)
-  double s_lam_n_x_;
+  double s_lam_n_a_;
 
 
   /**
@@ -126,6 +126,8 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+  void fixAngle(double &angle);
 };
 
 #endif /* UKF_H */
