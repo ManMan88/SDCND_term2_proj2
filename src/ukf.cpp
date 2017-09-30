@@ -64,7 +64,7 @@ UKF::UKF() {
   std_radrd_ = 0.3;
 
   // initial lidar measurement noise matrix
-  Rl_= MatrixXd::Zero(LIDAR_Z_SIZE,LIDAR_Z_SIZE);
+  Rl_ = MatrixXd::Zero(LIDAR_Z_SIZE,LIDAR_Z_SIZE);
   Rl_(0,0) = std_laspx_*std_laspx_;
   Rl_(1,1) = std_laspy_*std_laspy_;
 
@@ -82,6 +82,7 @@ UKF::UKF() {
   s_lam_n_x_ = sqrt(lambda_ + n_aug_);
 
   // set weights
+  weights_ = VectorXd(n_sig_);
   weights_.fill(1/(2*(lambda_ + n_sig_)));
   weights_(0) = lambda_/(lambda_+n_sig_);
 
