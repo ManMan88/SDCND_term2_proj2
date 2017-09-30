@@ -30,7 +30,7 @@ public:
 
   ///* lidar measurement matrix
   MatrixXd H_;
-  MstrixXd Ht_;
+  MatrixXd Ht_;
 
   ///* lidar measurement noise matrix
   MatrixXd Rl_;
@@ -100,7 +100,7 @@ public:
   /**
   *  First measurement initializer
   */
-  void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package);
+  void FirstMeasurementInitializer(MeasurementPackage meas_package);
 
   /**
    * ProcessMeasurement
