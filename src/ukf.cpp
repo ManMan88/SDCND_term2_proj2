@@ -17,10 +17,10 @@ using std::vector;
  */
 UKF::UKF() {
   // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = true;
+  use_laser_ = false;
 
   // if this is false, radar measurements will be ignored (except during init)
-  use_radar_ = false;
+  use_radar_ = true;
 
   // set nx_x and n_aug
   n_x_ = 5;
@@ -96,7 +96,7 @@ UKF::UKF() {
 UKF::~UKF() {}
 
 /**
- *  First measurement initializer
+ *  First measurement initialifixAnglezer
  */
 void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package){
 
@@ -228,7 +228,7 @@ void UKF::Prediction(double dt) {
       Xsig_pred_(1,i) += 0.5*dt2*sin(xi)*nu_a;
       Xsig_pred_(2,i) = v + dt*nu_a;
       Xsig_pred_(3,i) = xi + xi_d*dt + 0.5*dt2*nu_xid;
-      fixAngle(Xsig_pred_(3,i));
+      //fixAngle(Xsig_pred_(3,i));
       Xsig_pred_(4,i) = xi_d + dt*nu_xid;
   }
 
@@ -288,15 +288,18 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   VectorXd z_ = meas_package.raw_measurements_;
   VectorXd z_pred_ = VectorXd::Zero(RADAR_Z_SIZE);
 
-  //recover state parameters
-  double px = x_(0);
-  double py = x_(1);
-  double vx = x_(2)*cos(x_(3));
-  double vy = x_(3)*sin(x_(3));
-  double sq_x2y2 = sqrt(px*px + py*py);
+  double px, py, vx, vy, sq_x2y2;
+
 
   ///* calculate Z sigma matrix
   for (int i = 0; i < n_sig_; ++i) {
+    //recover state parameters
+    px = Xsig_pred_(0,i);
+    py = Xsig_pred_(1,i);
+    vx = Xsig_pred_(2,i)*cos(Xsig_pred_(3,i));
+    vy = Xsig_pred_(3,i)*sin(Xsig_pred_(3,i));
+    sq_x2y2 = sqrt(px*px + py*py);
+
     Zsig_(0,i) = sq_x2y2;
     if (px != 0)
       Zsig_(1,i) = atan2(py,px);
@@ -315,7 +318,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   ///* derive mean
   for (int i = 0; i < n_sig_; ++i)
-    z_pred_ += weights_(i)*Zsig_.col(i);
+    z_pred_ += weights_(i)*Zsig_.col(i);	
+  fixAngle(z_pred_(1));
 
   ///* derive covariance
   MatrixXd S_ = MatrixXd::Zero(RADAR_Z_SIZE,RADAR_Z_SIZE);
@@ -327,13 +331,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   }
   S_ += Rr_;
 
-  // fix +-pi errors between measurement (z_) and prediction (z_pred_)
-  fixAngle(z_pred_(1));
-  if (z_(1) > M_PI - WINDOW && z_pred_(1) < 0 )
-    z_pred_(1) += 2*M_PI;
-  else if (z_(1) < -M_PI + WINDOW && z_pred_(1) > 0 )
-    z_pred_(1) -= 2*M_PI;
-
   ///* Update Measurement
   MatrixXd T_ = MatrixXd::Zero(n_x_,RADAR_Z_SIZE);
   VectorXd diff_x(n_x_);
@@ -341,10 +338,16 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   for (int i = 0; i < n_sig_; ++i) {
     diff_x = Xsig_pred_.col(i) - x_;
     diff_z = Zsig_.col(i) - z_pred_;
-    T_ += weights_(i) * diff_x * diff_z.transpose();
+    T_ += weights_(i) * diff_x * (diff_z.transpose());
   }
 
   MatrixXd K_ = T_*S_.inverse();
+
+  // fix +-pi errors between measurement (z_) and prediction (z_pred_)
+  if (z_(1) > M_PI - WINDOW && z_pred_(1) < 0 )
+    z_pred_(1) += 2*M_PI;
+  else if (z_(1) < -M_PI + WINDOW && z_pred_(1) > 0 )
+    z_pred_(1) -= 2*M_PI;
 
   x_ += K_*(z_ - z_pred_);
   P_ -= K_*S_*K_.transpose();
