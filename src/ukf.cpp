@@ -23,10 +23,16 @@ UKF::UKF() {
   n_sig_ = 2*n_aug_ + 1;
 
   // initial state vector
-  x_ = VectorXd(n_x_);
+  x_ = VectorXd::Zero(n_x_);
 
   // initial covariance matrix
-  P_ = MatrixXd(n_x_,n_x_);
+  P_ = MatrixXd::Zero(n_x_,n_x_);
+
+  // initial lidar measurement matrix
+  H_ = MatrixXd::Zero(2,n_x);
+  H_(0,0) = 1;
+  H_(1,1) = 1;
+  Ht_ = H_.transpose();
 
   // initial covariance matrix
   Xsig_pred_ = MatrixXd(n_x_, n_sig_);
@@ -52,13 +58,16 @@ UKF::UKF() {
   // Radar measurement noise standard deviation radius change in m/s
   std_radrd_ = 0.3;
 
-  /**
-  TODO:
+  // initial lidar measurement noise matrix
+  Rl_= MatrixXd::Zero(2,2);
+  Rl_(0,0) = std_laspx_*std_laspx_;
+  Rl_(1,1) = std_laspy_*std_laspy_;
 
-  Complete the initialization. See ukf.h for other member properties.
-
-  Hint: one or more values initialized above might be wildly off...
-  */
+  // initial radar measurement noise matrix
+  Rr_= MatrixXd::Zero(3,3);
+  Rr_(0,0) = std_radr_*std_radr_;
+  Rr_(1,1) = std_radphi_*std_radphi_;
+  Rr_(2,2) = std_radrd_*std_radrd_;
 
   // the filter starts uninitialized
   is_initialized_= false;
@@ -72,7 +81,7 @@ UKF::UKF() {
   weights_(0) = lambda_/(lambda_+n_sig_);
 
   // set process covariance matrix
-  Q_.setZero();
+  Q_ = MatrixXd::Zero(2,2);
   Q_(0,0) = std_a_*std_a_;
   Q_(1,1) = std_yawdd_*std_yawdd_;
 }
@@ -83,8 +92,6 @@ UKF::~UKF() {}
  *  First measurement initializer
  */
 void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package){
-  P_.setZero();
-  x_.setZero();
 
   if (meas_package.sensor_type_ == meas_package.LASER){
     // initialize state and process uncertainty for laser
@@ -161,16 +168,13 @@ void UKF::Prediction(double dt) {
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
-  VectorXd x_aug_(n_aug_);
-  MatrixXd P_aug_(n_aug_,n_aug_;
-  MatrixXd Q_(n_aug_-n_x_,n_aug_-n_x_);
+  VectorXd x_aug_ = VectorXd::Zero(n_aug_);
+  MatrixXd P_aug_ = MatrixXd::Zero(n_aug_,n_aug_);
 
   // set augmented state vector
-  x.setZero();
   x_aug_.head(n_x_) = x_;
 
   // set augmented uncertainty matrix
-  P_.setZero();
   P_aug_.topLeftCorner(n_x_,n_x_) = P_;
   P_aug_.bottomRightCorner(n_aug_-n_x_,n_aug_-n_x_) = Q_;
 
@@ -242,6 +246,13 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the lidar NIS.
   */
+  VectorXd y_ = meas_package.raw_measurements_- H_*x_;
+  MatrixXd S_ = H_*P_*Ht_ + Rl_;
+  MatrixXd K_ = P_*Ht_*S_.inverse();
+
+  x_ += K_*y_;
+  P_ = (MatrixXd::Identity(2,2) - K_*H_)*P_;
+
 }
 
 /**
