@@ -22,10 +22,10 @@ VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
 
   for (int i = 0; i < estimations.size(); ++i){
     // transform the estimations state to the ground truth state (px, py, vx, vy)
-    error[0] = estimations[i][0];
-    error[1] = estimations[i][1];
-    error[2] = estimations[i][2] * cos(estimations[i][3]);
-    error[3] = estimations[i][2] * sin(estimations[i][3]);
+    error(0) = estimations[i](0);
+    error(1) = estimations[i](1);
+    error(2) = estimations[i](2) * cos(estimations[i](3);
+    error(3) = estimations[i](2) * sin(estimations[i](3));
 
     //compute error
     error -= ground_truth[i];
