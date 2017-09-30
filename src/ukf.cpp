@@ -17,17 +17,25 @@ UKF::UKF() {
   // if this is false, radar measurements will be ignored (except during init)
   use_radar_ = true;
 
+  // set nx_x and n_aug
+  n_x_ = 5;
+  n_aug_ = 7;
+  n_sig_ = 2*n_aug_ + 1;
+
   // initial state vector
-  x_ = VectorXd(5);
+  x_ = VectorXd(n_x_);
 
   // initial covariance matrix
-  P_ = MatrixXd(5, 5);
+  P_ = MatrixXd(n_x_,n_x_);
+
+  // initial covariance matrix
+  Xsig_pred_ = MatrixXd(n_x_, n_sig_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a_ = 3;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd_ = 3;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -55,17 +63,18 @@ UKF::UKF() {
   // the filter starts uninitialized
   is_initialized_= false;
 
-  // set nx_x and n_aug
-  n_x_ = 5;
-  n_aug_ = 7;
-  n_sig_ = 2*n_aug_ + 1;
-
   // initialize sigma point spreading parameter
-  lambda_ = 3 - n_x_;
+  lambda_ = 3 - n_aug_;
+  s_lam_n_x_ = sqrt(lambda_ + n_aug_);
 
   // set weights
   weights_.fill(1/(2*(lambda_ + n_sig_)));
   weights_(0) = lambda_/(lambda_+n_sig_);
+
+  // set process covariance matrix
+  Q_.setZero();
+  Q_(0,0) = std_a_*std_a_;
+  Q_(1,1) = std_yawdd_*std_yawdd_;
 }
 
 UKF::~UKF() {}
@@ -76,13 +85,16 @@ UKF::~UKF() {}
 void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package){
   P_.setZero();
   x_.setZero();
-  if (meas_package.sensor_type_ == LASER){
+
+  if (meas_package.sensor_type_ == meas_package.LASER){
+    // initialize state and process uncertainty for laser
     x_(0) = meas_package.raw_measurements_(0);
     x_(1) = meas_package.raw_measurements_(1);
     P_(0,0) = std_laspx_*2;
     P_(1,1) = std_laspy_*2;
   }
   else {
+    // initialize state and process uncertainty for radar
     double r = meas_package.raw_measurements_(0);
     double phi = meas_package.raw_measurements_(1);
     x_(0) = r*cos(phi);
@@ -90,10 +102,12 @@ void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package){
     P_(0,0) = sqrt(std_radr_*std_radr_ + std_radphi_*std_radphi_)*2;
     P_(1,1) = P_(0,0);
   }
+  // set the rest of the process uncertainty
   P_(2,2) = 1000;
   P_(3,3) = 1000;
   P_(4,4) = 1000;
 
+  //update time step
   time_us_ = meas_package.timestamp_;
   is_initialized_ = true;
   return;
@@ -113,10 +127,24 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   */
   if (!is_initialized_){
     FirstMeasurementInitializer(meas_package);
+    return;
+  }
 
+  // update time and dt
+  double dt = (meas_package.timestamp_ - time_us_)/1000000;
+  time_us_ = meas_package.timestamp_;
 
+  ///* Prediction
+  // if very small dt, skip prediction
+  if (dt > 0.001)
+    Prediction(dt);
 
-
+  ///* update measurement
+  if (meas_package.sensor_type_== meas_package.LASER){
+    UpdateLidar(meas_package);
+  }
+  else {
+    UpdateRadar(meas_package);
   }
 
 }
@@ -126,13 +154,79 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
  * @param {double} delta_t the change in time (in seconds) between the last
  * measurement and this one.
  */
-void UKF::Prediction(double delta_t) {
+void UKF::Prediction(double dt) {
   /**
   TODO:
 
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
+  VectorXd x_aug_(n_aug_);
+  MatrixXd P_aug_(n_aug_,n_aug_;
+  MatrixXd Q_(n_aug_-n_x_,n_aug_-n_x_);
+
+  // set augmented state vector
+  x.setZero();
+  x_aug_.head(n_x_) = x_;
+
+  // set augmented uncertainty matrix
+  P_.setZero();
+  P_aug_.topLeftCorner(n_x_,n_x_) = P_;
+  P_aug_.bottomRightCorner(n_aug_-n_x_,n_aug_-n_x_) = Q_;
+
+  ///* generate sigma points
+  MatrixXd Xsig_aug_(n_aug_,n_sig_);
+  MatrixXd A_ = sqrt P_aug_.llt().matrixL();
+  Xsig_aug_.col(0) = x_aug_;
+  for (int i = 0; i < n_aug_; ++i){
+    Xsig_aug_.col(i+1) = x_aug_+ s_lam_n_x_*A.col(i);
+    Xsig_aug_.col(i+n_aug_) = x_aug_- s_lam_n_x_*A.col(i);
+  }
+
+  ///* predict sigma points
+  double dt2 = dt*dt;
+  double px,py,v,xi,xi_d,nu_a,nu_xi;
+
+  for (int i = 0; i < n_sig_; ++i){
+      px = Xsig_aug_(0,i);
+      py = Xsig_aug_(1,i);
+      v = Xsig_aug_(2,i);
+      xi = Xsig_aug_(3,i);
+      xi_d = Xsig_aug_(4,i);
+      nu_a = Xsig_aug_(5,i);
+      nu_xid = Xsig_aug_(6,i);
+
+      if (fabs(xi_d) < 0.001) {
+          Xsig_pred_(0,i) = px + v*cos(xi)*dt;
+          Xsig_pred_(1,i) = py + v*sin(xi)*dt;
+      }
+      else {
+          Xsig_pred_(0,i) = px + (v/xi_d)*(sin(xi+xi_d*dt)-sin(xi));
+          Xsig_pred_(1,i) = py + (v/xi_d)*(-cos(xi+xi_d*dt)+cos(xi));
+      }
+
+      Xsig_pred_(0,i) += 0.5*dt2*cos(xi)*nu_a;
+      Xsig_pred_(1,i) += 0.5*dt2*sin(xi)*nu_a;
+      Xsig_pred_(2,i) = v + dt*nu_a;
+      Xsig_pred_(3,i) = xi + xi_d*dt + 0.5*dt2*nu_xid;
+      Xsig_pred_(4,i) = xi_d + dt*nu_xid;
+  }
+
+  ///* derive mean
+  x_.setZero();
+
+  vectorXd err(n_x);
+  for (int i = 0; i < n_sig_; ++i){
+    x_ += weights_(i)*Xsig_pred_.col(i);
+  }
+
+  ///* derive covariance
+  P_.setZero();
+  vectorXd err(n_x);
+  for (int i = 0; i < n_sig_; ++i){
+    err = Xsig_pred_.col(i) - x_;
+    P_ += weights_* err * err.transpose();
+  }
 }
 
 /**

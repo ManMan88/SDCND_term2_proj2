@@ -28,6 +28,9 @@ public:
   ///* state covariance matrix
   MatrixXd P_;
 
+  ///* process covariance matrix
+  MatrixXd Q_;
+
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
@@ -69,6 +72,9 @@ public:
 
   ///* Sigma point spreading parameter
   double lambda_;
+
+  ///* sqrt(lambda + n_x)
+  double s_lam_n_x_;
 
 
   /**
