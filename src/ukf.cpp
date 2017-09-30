@@ -51,9 +51,54 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
+
+  // the filter starts uninitialized
+  is_initialized_= false;
+
+  // set nx_x and n_aug
+  n_x_ = 5;
+  n_aug_ = 7;
+  n_sig_ = 2*n_aug_ + 1;
+
+  // initialize sigma point spreading parameter
+  lambda_ = 3 - n_x_;
+
+  // set weights
+  weights_.fill(1/(2*(lambda_ + n_sig_)));
+  weights_(0) = lambda_/(lambda_+n_sig_);
 }
 
 UKF::~UKF() {}
+
+/**
+ *  First measurement initializer
+ */
+void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package){
+  P_.setZero();
+  x_.setZero();
+  if (meas_package.sensor_type_ == LASER){
+    x_(0) = meas_package.raw_measurements_(0);
+    x_(1) = meas_package.raw_measurements_(1);
+    P_(0,0) = std_laspx_*2;
+    P_(1,1) = std_laspy_*2;
+  }
+  else {
+    double r = meas_package.raw_measurements_(0);
+    double phi = meas_package.raw_measurements_(1);
+    x_(0) = r*cos(phi);
+    x_(1) = r*sin(phi);
+    P_(0,0) = sqrt(std_radr_*std_radr_ + std_radphi_*std_radphi_)*2;
+    P_(1,1) = P_(0,0);
+  }
+  P_(2,2) = 1000;
+  P_(3,3) = 1000;
+  P_(4,4) = 1000;
+
+  time_us_ = meas_package.timestamp_;
+  is_initialized_ = true;
+  return;
+}
+
 
 /**
  * @param {MeasurementPackage} meas_package The latest measurement data of
@@ -66,6 +111,14 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
+  if (!is_initialized_){
+    FirstMeasurementInitializer(meas_package);
+
+
+
+
+  }
+
 }
 
 /**

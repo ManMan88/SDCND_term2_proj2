@@ -64,6 +64,9 @@ public:
   ///* Augmented state dimension
   int n_aug_;
 
+  ///* Number of sigma points
+  int n_sig_;
+
   ///* Sigma point spreading parameter
   double lambda_;
 
@@ -77,6 +80,11 @@ public:
    * Destructor
    */
   virtual ~UKF();
+
+  /**
+  *  First measurement initializer
+  */
+  void UKF::FirstMeasurementInitializer(MeasurementPackage meas_package);
 
   /**
    * ProcessMeasurement
