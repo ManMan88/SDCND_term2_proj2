@@ -17,10 +17,10 @@ using std::vector;
  */
 UKF::UKF() {
   // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = false;
+  use_laser_ = true;
 
   // if this is false, radar measurements will be ignored (except during init)
-  use_radar_ = true;
+  use_radar_ = false;
 
   // set nx_x and n_aug
   n_x_ = 5;
@@ -288,16 +288,16 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   VectorXd z_ = meas_package.raw_measurements_;
   VectorXd z_pred_ = VectorXd::Zero(RADAR_Z_SIZE);
 
-  double px, py, vx, vy, sq_x2y2;
-
+  cout << "Lazer Meas: " << endl << meas_package.raw_measurements_ << endl;
 
   ///* calculate Z sigma matrix
+  double px, py, vx, vy, sq_x2y2;
   for (int i = 0; i < n_sig_; ++i) {
     //recover state parameters
     px = Xsig_pred_(0,i);
     py = Xsig_pred_(1,i);
     vx = Xsig_pred_(2,i)*cos(Xsig_pred_(3,i));
-    vy = Xsig_pred_(3,i)*sin(Xsig_pred_(3,i));
+    vy = Xsig_pred_(2,i)*sin(Xsig_pred_(3,i));
     sq_x2y2 = sqrt(px*px + py*py);
 
     Zsig_(0,i) = sq_x2y2;
@@ -318,7 +318,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   ///* derive mean
   for (int i = 0; i < n_sig_; ++i)
-    z_pred_ += weights_(i)*Zsig_.col(i);	
+    z_pred_ += weights_(i)*Zsig_.col(i);
   fixAngle(z_pred_(1));
 
   ///* derive covariance
